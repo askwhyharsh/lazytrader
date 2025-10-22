@@ -62,7 +62,7 @@ func (i *Ingestion) Start(ctx context.Context) error {
 	// The event listener will handle the actual trade detection
 
 	// Initial leaderboard update
-	if err := i.updateLeaderboardFromAPI(ctx); err != nil {
+	if err := i.updateLeaderboardFromAPIMock(ctx); err != nil {
 		log.Printf("Failed initial leaderboard update: %v", err)
 	}
 
@@ -71,7 +71,7 @@ func (i *Ingestion) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-leaderboardTicker.C:
-			if err := i.updateLeaderboardFromAPI(ctx); err != nil {
+			if err := i.updateLeaderboardFromAPIMock(ctx); err != nil {
 				log.Printf("Failed to update leaderboard: %v", err)
 			}
 		}
@@ -94,6 +94,7 @@ func (i *Ingestion) updateLeaderboardFromAPI(ctx context.Context) error {
 	url := fmt.Sprintf("%s?timePeriod=%s&orderBy=%s&limit=%d&offset=%d&category=overall",
 		POLYMARKET_LEADERBOARD_API, timePeriod, orderBy, limit, offset)
 
+	// mock with mock data for now 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -158,6 +159,113 @@ func (i *Ingestion) updateLeaderboardFromAPI(ctx context.Context) error {
 
 	return nil
 }
+// updateLeaderboardFromAPI fetches top traders from Polymarket Data API
+func (i *Ingestion) updateLeaderboardFromAPIMock(ctx context.Context) error {
+	log.Println("🔍 Fetching top traders from Polymarket Data API...")	
+	// log.Println("⚠️  Using MOCK leaderboard data (hardcoded)")
+	entries := []PolymarketLeaderboardEntry{
+		{
+			Rank:         "1",
+			ProxyWallet:  "0x1ff26f9f8a048d4f6fb2e4283f32f6ca64d2dbbd",
+			UserName:     "0x1ff26F9f8a048d4F6FB2e4283F32f6ca64d2DBBD-1757528275694",
+			Vol:          5838168.843809,
+			PnL:          824775.3512579,
+			ProfileImage: "",
+		},
+		{
+			Rank:         "2",
+			ProxyWallet:  "0x76062e7bbfc0fb783487ff884960c4bc17962836",
+			UserName:     "unpredictable666",
+			Vol:          3659067.912644,
+			PnL:          338912.807525593,
+			ProfileImage: "",
+		},
+		{
+			Rank:         "3",
+			ProxyWallet:  "0x3657862e57070b82a289b5887ec943a7c2166b14",
+			UserName:     "Mayuravarma",
+			Vol:          2700151.206408,
+			PnL:          319270.707733884,
+			ProfileImage: "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3576478-bc4dca02-880d-45f9-85f7-a831e63cbbd5.jpeg",
+		},
+		{
+			Rank:         "4",
+			ProxyWallet:  "0x42592084120b0d5287059919d2a96b3b7acb936f",
+			UserName:     "antman-batman-superman-lakers-in-5",
+			Vol:          4056904.463206,
+			PnL:          287340.843661496,
+			ProfileImage: "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-2671131-0328059f-d6b6-4775-bd7b-dfb6d737a7b7.png",
+		},
+		{
+			Rank:         "5",
+			ProxyWallet:  "0x900c83447eb74c3f29f17658e848e2715ca41d7a",
+			UserName:     "Finubar",
+			Vol:          2254010.720214,
+			PnL:          239830.693446298,
+			ProfileImage: "",
+		},
+		{
+			Rank:         "6",
+			ProxyWallet:  "0x9b3dcd99eec7fe11602e6534e6302c0f318d7422",
+			UserName:     "unsunghero1990",
+			Vol:          749542.901607,
+			PnL:          211923.90666831,
+			ProfileImage: "",
+		},
+		{
+			Rank:         "7",
+			ProxyWallet:  "0xd38b71f3e8ed1af71983e5c309eac3dfa9b35029",
+			UserName:     "primm",
+			Vol:          810117.04,
+			PnL:          198260.75111339,
+			ProfileImage: "",
+		},
+	}
+
+	if len(entries) == 0 {
+		log.Println("⚠️  No leaderboard entries returned from API")
+		return nil
+	}
+
+	// Store top traders in database
+	count := 0
+	for _, entry := range entries {
+		// Filter by minimum profit threshold
+		if entry.PnL >= i.cfg.MinProfitThreshold {
+			// Calculate approximate win rate (we don't have exact data from this API)
+			// For now, assume higher PnL = higher win rate
+			estimatedWinRate := 0.5 + (entry.PnL / (entry.Vol + 1)) * 0.3
+			if estimatedWinRate > 0.9 {
+				estimatedWinRate = 0.9
+			}
+
+			if err := i.db.UpsertTopTrader(entry.ProxyWallet, entry.PnL, estimatedWinRate); err != nil {
+				log.Printf("Failed to upsert trader %s: %v", entry.ProxyWallet, err)
+			} else {
+				count++
+				log.Printf("  ✓ Rank #%s: %s - PnL: $%.2f, Vol: $%.2f", 
+					entry.Rank, entry.UserName, entry.PnL, entry.Vol)
+			}
+		} else {
+			log.Printf("  ✗ Rank #%s: %s - PnL: $%.2f (below threshold)", 
+				entry.Rank, entry.UserName, entry.PnL)
+		}
+	}
+
+	log.Printf("[] Updated leaderboard with %d profitable traders (out of %d total)", count, len(entries))
+	
+	// Log top traders we're tracking
+	topTraders, err := i.db.GetTopTraders(i.cfg.TopTradersCount)
+	if err == nil && len(topTraders) > 0 {
+		log.Printf("[:] Currently tracking top %d traders:", len(topTraders))
+		for idx, trader := range topTraders {
+			log.Printf("   %d. %s", idx+1, trader)
+		}
+	}
+
+	return nil
+}
+	
 
 // GetLeaderboardWithParams allows custom API parameters
 func (i *Ingestion) GetLeaderboardWithParams(ctx context.Context, timePeriod, orderBy string, limit int) ([]PolymarketLeaderboardEntry, error) {
