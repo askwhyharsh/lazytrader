@@ -10,6 +10,8 @@ import (
 
 	"github.com/askwhyharsh/lazytrader/internal/config"
 	"github.com/askwhyharsh/lazytrader/internal/database"
+	"github.com/askwhyharsh/lazytrader/internal/listener"
+
 	// "github.com/askwhyharsh/lazytrader/internal/executor"
 	"github.com/askwhyharsh/lazytrader/internal/ingestion"
 	"github.com/askwhyharsh/lazytrader/internal/server"
@@ -43,12 +45,14 @@ func main() {
 		}
 	}()
 
-	// // Start execution engine
-	// go func() {
-	// 	if err := exec.Start(ctx); err != nil {
-	// 		log.Printf("Execution engine error: %v", err)
-	// 	}
-	// }()
+	// start listener
+
+	lister , _ := listener.NewPolymarketListener(cfg, db)
+	go func() {
+		if err :=lister.Start(ctx); err != nil {
+			log.Printf("Listener service error: %v",err)
+		}
+	}()
 
 	// Start HTTP server
 	srv := server.New(cfg, db)

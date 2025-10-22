@@ -46,20 +46,21 @@ type PolymarketListener struct {
 
 // OrderFilledEvent represents the OrderFilled event from CTF Exchange
 type OrderFilledEvent struct {
-	OrderHash    [32]byte
-	Maker        common.Address
-	Taker        common.Address
-	MakerAssetId *big.Int
-	TakerAssetId *big.Int
-	MakerAmount  *big.Int
-	TakerAmount  *big.Int
-	Fee          *big.Int
+    OrderHash          [32]byte
+    Maker              common.Address
+    Taker              common.Address
+    MakerAssetId       *big.Int
+    TakerAssetId       *big.Int
+    MakerAmountFilled  *big.Int
+    TakerAmountFilled  *big.Int
+    Fee                *big.Int
 }
+
 
 // OrdersMatchedEvent represents batch order matching
 type OrdersMatchedEvent struct {
 	TakerOrderHash [32]byte
-	MakerOrderHashes [][32]byte
+	TakerOrderMaker common.Address
 	MakerAssetId   *big.Int
 	TakerAssetId   *big.Int
 	MakerAmountFilled *big.Int
@@ -173,6 +174,8 @@ func (l *PolymarketListener) processBlock(ctx context.Context, blockNumber *big.
 	for _, vLog := range logs {
 		if err := l.processLog(vLog); err != nil {
 			log.Printf("Error processing log: %v", err)
+			// stop loop
+			break
 		}
 	}
 	
@@ -180,6 +183,7 @@ func (l *PolymarketListener) processBlock(ctx context.Context, blockNumber *big.
 }
 
 func (l *PolymarketListener) processLog(vLog types.Log) error {
+	fmt.Println(vLog.Topics)
 	// Check if this is an OrderFilled event
 	if vLog.Topics[0] == l.orderFilledSig {
 		return l.processOrderFilled(vLog)
@@ -214,6 +218,7 @@ func (l *PolymarketListener) processOrderFilled(vLog types.Log) error {
 	takerIsTop := l.topTraders[strings.ToLower(taker)]
 	
 	if !makerIsTop && !takerIsTop {
+		log.Printf(" Not a top trader activity :(")
 		return nil // Skip if not from top trader
 	}
 	
@@ -222,8 +227,8 @@ func (l *PolymarketListener) processOrderFilled(vLog types.Log) error {
 	log.Printf("   Taker: %s (Top: %v)", taker[:10], takerIsTop)
 	log.Printf("   Maker Asset: %s", event.MakerAssetId.String())
 	log.Printf("   Taker Asset: %s", event.TakerAssetId.String())
-	log.Printf("   Maker Amount: %s", event.MakerAmount.String())
-	log.Printf("   Taker Amount: %s", event.TakerAmount.String())
+	log.Printf("   Maker Amount: %s", event.MakerAmountFilled.String())
+	log.Printf("   Taker Amount: %s", event.TakerAmountFilled.String())
 	log.Printf("   Tx: %s", vLog.TxHash.Hex())
 	
 	// Determine who initiated (maker or taker) and what they're doing
@@ -251,41 +256,41 @@ type TradeSignal struct {
 func (l *PolymarketListener) extractTradeSignal(event *OrderFilledEvent, makerIsTop, takerIsTop bool) *TradeSignal {
 	signal := &TradeSignal{}
 	
-	// If maker asset is 0, maker is buying (providing USDC)
-	// If taker asset is 0, taker is buying (providing USDC)
+	// If maker asset is 0, maker is buying (providing USDC) // so we can buy - if maker is top trader
+	// If taker asset is 0, taker is buying (providing USDC) // 
 	
 	if makerIsTop {
 		signal.Trader = event.Maker.Hex()
 		if event.MakerAssetId.Cmp(big.NewInt(0)) == 0 {
 			signal.Side = "BUY"
 			signal.TokenID = event.TakerAssetId
-			signal.Amount = event.TakerAmount
+			signal.Amount = event.TakerAmountFilled
 		} else {
 			signal.Side = "SELL"
 			signal.TokenID = event.MakerAssetId
-			signal.Amount = event.MakerAmount
+			signal.Amount = event.MakerAmountFilled
 		}
 	} else if takerIsTop {
 		signal.Trader = event.Taker.Hex()
 		if event.TakerAssetId.Cmp(big.NewInt(0)) == 0 {
 			signal.Side = "BUY"
 			signal.TokenID = event.MakerAssetId
-			signal.Amount = event.MakerAmount
+			signal.Amount = event.MakerAmountFilled
 		} else {
 			signal.Side = "SELL"
 			signal.TokenID = event.TakerAssetId
-			signal.Amount = event.TakerAmount
+			signal.Amount = event.TakerAmountFilled
 		}
 	}
 	
 	// Calculate price (simplified)
-	if signal.Side == "BUY" && event.MakerAmount.Cmp(big.NewInt(0)) > 0 {
+	if signal.Side == "BUY" && event.MakerAmountFilled.Cmp(big.NewInt(0)) > 0 {
 		signal.Price = new(big.Int).Div(
-			new(big.Int).Mul(event.TakerAmount, big.NewInt(1e6)),
-			event.MakerAmount,
+			new(big.Int).Mul(event.TakerAmountFilled, big.NewInt(1e6)),
+			event.MakerAmountFilled,
 		)
 	}
-	
+	fmt.Printf("+v%s", signal)
 	return signal
 }
 
@@ -333,7 +338,7 @@ const CTFExchangeABI = `[
 		"anonymous": false,
 		"inputs": [
 			{"indexed": true, "name": "takerOrderHash", "type": "bytes32"},
-			{"indexed": false, "name": "makerOrderHashes", "type": "bytes32[]"},
+			{"indexed": false, "name": "takerOrderMaker", "type": "address"},
 			{"indexed": false, "name": "makerAssetId", "type": "uint256"},
 			{"indexed": false, "name": "takerAssetId", "type": "uint256"},
 			{"indexed": false, "name": "makerAmountFilled", "type": "uint256"},
