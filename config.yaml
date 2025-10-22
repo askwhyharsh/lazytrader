@@ -1,0 +1,41 @@
+# LazyTrader Configuration
+
+# Database
+database_path: "./data/lazytrader.db"
+
+# Polymarket Trading Settings
+top_traders_count: 10
+min_profit_threshold: 1000.0  # Minimum P&L to consider a trader
+copy_trade_multiplier: 0.1    # Copy trades at 10% of original size
+
+# Telegram Notifications
+telegram_bot_token: "YOUR_BOT_TOKEN_HERE"
+telegram_chat_id: 123456789
+
+# Wallet Configuration
+private_key: "YOUR_PRIVATE_KEY_HERE"
+wallet_address: "YOUR_WALLET_ADDRESS_HERE"
+polygon_rpc_url: "https://polygon-rpc.com"
+
+# ============================================
+# PROXY SETTINGS (IMPORTANT FOR INDIA)
+# ============================================
+
+# # Enable proxy to bypass geo-restrictions
+# proxy_enabled: true
+
+# # Proxy URL
+# # For Tor: "socks5://127.0.0.1:9050"
+# # For HTTP proxy: "http://proxy-server:port"
+# # For authenticated proxy: "http://username:password@proxy-server:port"
+# proxy_url: "socks5://127.0.0.1:9050"
+
+# # Proxy type: "socks5", "http", or "https"
+# proxy_type: "socks5"
+
+# ============================================
+# FEATURE FLAGS
+# ============================================
+
+# Dry run mode (don't execute actual trades)
+dry_run: true
