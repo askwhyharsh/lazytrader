@@ -183,7 +183,7 @@ func (l *PolymarketListener) processBlock(ctx context.Context, blockNumber *big.
 }
 
 func (l *PolymarketListener) processLog(vLog types.Log) error {
-	fmt.Println(vLog.Topics)
+	// fmt.Println(vLog.Topics)
 	// Check if this is an OrderFilled event
 	if vLog.Topics[0] == l.orderFilledSig {
 		return l.processOrderFilled(vLog)
@@ -206,9 +206,19 @@ func (l *PolymarketListener) processOrderFilled(vLog types.Log) error {
 	}
 	
 	// Extract indexed parameters from topics
-	if len(vLog.Topics) >= 2 {
+	// Topics[0] = event signature
+	// Topics[1] = orderHash (indexed)
+	// Topics[2] = maker (indexed)
+	// Topics[3] = taker (indexed)
+	if len(vLog.Topics) >= 4 {
 		event.OrderHash = [32]byte(vLog.Topics[1])
+		event.Maker = common.BytesToAddress(vLog.Topics[2].Bytes())
+		event.Taker = common.BytesToAddress(vLog.Topics[3].Bytes())
+	} else {
+		return fmt.Errorf("insufficient topics in log: expected 4, got %d", len(vLog.Topics))
 	}
+	
+	// fmt.Println("event", event, vLog.Data)
 	
 	maker := event.Maker.Hex()
 	taker := event.Taker.Hex()
@@ -216,9 +226,30 @@ func (l *PolymarketListener) processOrderFilled(vLog types.Log) error {
 	// Check if maker or taker is a top trader we're tracking
 	makerIsTop := l.topTraders[strings.ToLower(maker)]
 	takerIsTop := l.topTraders[strings.ToLower(taker)]
+	testCondition := strings.ToLower(taker) == "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e"
 	
-	if !makerIsTop && !takerIsTop {
-		log.Printf(" Not a top trader activity :(")
+
+
+	// test condition
+	if(testCondition) {
+		log.Printf("🔔 Top trader activity detected!")
+		log.Printf("   Maker: %s (Top: %v)", maker[:10], makerIsTop)
+		log.Printf("   Taker: %s (Top: %v)", taker[:10], takerIsTop)
+		log.Printf("   Maker Asset: %s", event.MakerAssetId.String())
+		log.Printf("   Taker Asset: %s", event.TakerAssetId.String())
+		log.Printf("   Maker Amount: %s", event.MakerAmountFilled.String())
+		log.Printf("   Taker Amount: %s", event.TakerAmountFilled.String())
+		log.Printf("   Tx: %s", vLog.TxHash.Hex())
+
+				// Determine who initiated (maker or taker) and what they're doing
+		tradeSignal := l.extractTradeSignal(event, makerIsTop, takerIsTop)
+		// Store in database for executor to pick up
+		return l.storeTradeSignal(tradeSignal, vLog.TxHash.Hex())
+	}
+	if (!makerIsTop && !takerIsTop) {
+		// log.Printf(" Not a top trader activity :(")
+		// log.Printf(" Not a top trader activity :(")
+		log.Println("maker", testCondition, strings.ToLower(maker), strings.ToLower(taker))
 		return nil // Skip if not from top trader
 	}
 	

@@ -18,6 +18,7 @@ import (
 )
 
 func main() {
+	// create context first
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -46,7 +47,6 @@ func main() {
 	}()
 
 	// start listener
-
 	lister , _ := listener.NewPolymarketListener(cfg, db)
 	go func() {
 		if err :=lister.Start(ctx); err != nil {
@@ -65,8 +65,7 @@ func main() {
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-
+	<-sigChan // block until signal is received
 	log.Println("Shutting down gracefully...")
-	cancel()
+
 }
